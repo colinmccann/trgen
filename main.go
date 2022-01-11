@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"net/url"
 	"os"
-	"regexp"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -16,27 +14,36 @@ import (
 )
 
 const (
-	defaultMaxHops             = 12
-	defaultTimeout             = 1 * time.Second // how long to wait for a response before going to next hop
-	defaultTracerouteTargetSet = "data/traceroute_targets.txt"
-	// const defaultOutput
+	defaultMaxHops = 12
+	defaultTimeout = 1 * time.Second // how long to wait for a response before going to next hop
+	defaultInfile  = "data/traceroute_targets.txt"
+	defaultOutfile = "data/results.txt"
 )
 
-// TODO - we may want a struct sitting above these to handle the session
 // should these structs be interfaces?
-// TODO - are these terms too generic? ctrdTraceroute, ctrdHop, etc
-type traceroute struct {
-	// originIP			net.IP
-	destinationIP       net.IP
-	destinationHostname string
-	hops                []hop
+// TODO - are these terms too generic? ctrdTraceroute, ctrdHop, etc - YES, fix this!
+// outputType should a be restricted set of options
+type CTRDSession struct {
+	maxHops     int
+	timeout     time.Duration
+	outputType  string
+	outputPath  string
+	localIP     net.IP
+	traceroutes []CTRDTraceroute
 }
 
-type hop struct {
+type CTRDTraceroute struct {
+	originIP            net.IP
+	destinationIP       net.IP
+	destinationHostname string
+	hops                []CTRDHop
+}
+
+type CTRDHop struct {
 	num      int
-	ip       net.IP
+	ip       string
 	hostname string
-	latency  float32
+	latency  time.Duration
 }
 
 func main() {
@@ -47,35 +54,46 @@ func main() {
 	/*********************** Flags ****************************/
 	maxHops := flag.Int("m", defaultMaxHops, "Max hops in the traceroute (ie max ttl)")
 	timeout := flag.Duration("t", defaultTimeout, "Timeout to wait for an answer in one hop")
-	// trTarget := flag.String("u", "", "Traceroute target (url or ip)")
+	trTarget := flag.String("u", "", "Traceroute target (url or ip)")
+	infile := flag.Bool("i", false, "Set to allow an input file")
+	infilePath := flag.String("ipath", defaultInfile, "Specify path to traceroute targets input file")
+	outfile := flag.Bool("o", false, "Set to allow an output file")
+	outfilePath := flag.String("opath", defaultOutfile, "Specify path to results output file")
 	flag.Parse()
 
-	// fmt.Println(*maxHops)
-	// fmt.Println(*timeout)
+	/*********************** Session ****************************/
 
-	/*********************** Input ****************************/
-	targets := parseInfile()
+	// what other vals go in here?
+	// - session time
+	session := CTRDSession{
+		maxHops: *maxHops,
+		timeout: *timeout,
+		localIP: getLocalIP(),
+	}
+
+	/*********************** I/O ****************************/
+	// TODO - this still feels weird, too global objecty. Is it not better to have a return here?
+	handleInput(&session, *trTarget, *infile, *infilePath)
+	handleOutput(&session, *outfile, *outfilePath)
 
 	/****************** TRACEROUTE STARTS HERE *******************/
 
-	/*********************** Destination parsing ****************************/
-
-	for _, target := range targets {
-		ip, hostname, err := IPLookup(target)
-		check(err)
-
-		tr := traceroute{
-			destinationIP:       ip,
-			destinationHostname: hostname,
-			hops:                make([]hop, *maxHops),
+	for _, tr := range session.traceroutes {
+		if session.outputType == "terminal" {
+			writeTracerouteHeadersToOutput(tr)
 		}
-		trace(tr, *maxHops, *timeout)
+		trace(&session, &tr)
 	}
+
+	writeSessionToOutput(&session)
+
+	/*********************** Cleanup and exit ****************************/
+	os.Exit(0)
 }
 
-func trace(tr traceroute, maxHops int, timeout time.Duration) {
+func trace(session *CTRDSession, tr *CTRDTraceroute) {
 
-	/*********************** Traceroute ****************************/
+	/*********************** Networking component ****************************/
 
 	// open up the listening address for returning ICMP packets
 	// if we're going to do multiple TRs concurrently, we'll have to open multiple of these, right?
@@ -90,7 +108,7 @@ func trace(tr traceroute, maxHops int, timeout time.Duration) {
 	}
 	defer icmpConn.Close()
 
-	for i := 1; i <= maxHops; i++ {
+	for i := 1; i <= session.maxHops; i++ {
 		// set the time to live
 		icmpConn.IPv4PacketConn().SetTTL(i)
 
@@ -101,7 +119,7 @@ func trace(tr traceroute, maxHops int, timeout time.Duration) {
 			Type: ipv4.ICMPTypeEcho, Code: 0,
 			Body: &icmp.Echo{
 				ID: os.Getpid() & 0xffff, Seq: 1,
-				Data: []byte("CTRD probing..."),
+				Data: []byte("CTRD says hello!"),
 			},
 		}
 
@@ -115,11 +133,9 @@ func trace(tr traceroute, maxHops int, timeout time.Duration) {
 		// "140.82.114.3" - github.com
 		icmpConn.WriteTo(wb, &net.UDPAddr{IP: tr.destinationIP, Zone: "en0"})
 
-		// hop# | url | ip | rtt1 | rtt2 | rtt3
-
 		readBuffer := make([]byte, 1500)
 
-		if err := icmpConn.SetDeadline(time.Now().Add(timeout)); err != nil {
+		if err := icmpConn.SetDeadline(time.Now().Add(session.timeout)); err != nil {
 			// TODO - clean up this error handling
 			fmt.Fprintf(os.Stderr, "Could not set the read timeout on the ipv4 socket: %s\n", err)
 			os.Exit(1)
@@ -129,13 +145,19 @@ func trace(tr traceroute, maxHops int, timeout time.Duration) {
 		// this is where it's dying. Is it something with the wrong interface? Or ICMP is rejected?
 		// the ReadFrom never completes, n = 0, peer = nil
 		// this doesn't exactly work. Once it hits something non-responsive, it just continues forever until hitting max hops
-		// IS THIS STILL A PROBLEM?
 		if err != nil {
-			fmt.Printf("%v \t* \t* \t*\n", i)
+			tr.hops[i-1] = CTRDHop{
+				num:      i,
+				ip:       "*",
+				hostname: "*",
+			}
+
+			// hop.ip, hop.hostname, hop.latency = "*", "*"
 			continue
 		}
 
 		// split off the port, since it'll choke the DNS lookup
+		// ip is a string for now, set to something stricter when we clean up the IP - hostname / port DNS conversions
 		ip, _, err := net.SplitHostPort(peer.String())
 		if err != nil {
 			log.Fatal(err)
@@ -149,16 +171,27 @@ func trace(tr traceroute, maxHops int, timeout time.Duration) {
 		// finish line for the RTT
 		// TODO - is this the right place to put this?
 		latency := time.Since(startTime)
-
-		// we won't need this in the long run
 		hostname, _ := lookupIpHostname(ip)
 
-		fmt.Printf("%v | %v | %+v | %v\n", i, ip, hostname, latency)
+		tr.hops[i-1] = CTRDHop{
+			num:      i,
+			ip:       ip,
+			hostname: hostname,
+			latency:  latency,
+		}
 
+		if session.outputType == "terminal" {
+			writeHopToOutput(tr.hops[i-1])
+		}
+
+		// TODO - check this
 		if icmpAnswer.Type == ipv4.ICMPTypeEchoReply {
 			fmt.Println("Traceroute complete")
 			break
 		}
+
+		// TODO - remove zero values from the hops slice? The hops slice is maxHops long, with unassigned values at the end
+		// tr.hops = tr.hops(:)
 	}
 }
 
@@ -227,47 +260,4 @@ func lookupIpHostname(addr string) (string, string) {
 		tname = name
 	}
 	return tname, name
-}
-
-func check(e error) {
-	if e != nil {
-		log.Fatal(e)
-	}
-}
-
-const URIPattern string = `^((ftp|http|https):\/\/)?(\S+(:\S*)?@)?((([1-9]\d?|1\d\d|2[01]\d|22[0-3])(\.(1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.([0-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(((([a-z\x{00a1}-\x{ffff}0-9]+-?-?_?)*[a-z\x{00a1}-\x{ffff}0-9]+)\.)?)?(([a-z\x{00a1}-\x{ffff}0-9]+-?-?_?)*[a-z\x{00a1}-\x{ffff}0-9]+)(?:\.([a-z\x{00a1}-\x{ffff}]{2,}))?)|localhost)(:(\d{1,5}))?((\/|\?|#)[^\s]*)?$`
-
-func validateURI(uri string) bool {
-	pattern := URIPattern
-	match, err := regexp.MatchString(pattern, uri)
-	check(err)
-	return match
-}
-
-func parseInfile() []string {
-	f, err := os.Open("data/traceroute_targets.txt")
-	check(err)
-	// do I need to defer this?
-	defer f.Close()
-	scanner := bufio.NewScanner(f)
-
-	// is it better to instantiate a zero length slice, or make it big and then clear out the empty values later? make([]string, 50)
-	targets := []string{}
-	// it might also be better to create the output struct (session struct) here, since we're going to have to do it anyways...
-	fmt.Println("Validating traceroute targets")
-	for scanner.Scan() {
-		uri := scanner.Text()
-		// check for uri validity
-		// check for other things?
-		if validateURI(uri) {
-			targets = append(targets, uri)
-		} else {
-			fmt.Printf("Found non-valid traceroute target '%v', skipping...\n", uri)
-		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
-	}
-	return targets
 }

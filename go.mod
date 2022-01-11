@@ -1,4 +1,4 @@
-module github.com/colinmccann/nopw_tr
+module github.com/colinmccann/trgen
 
 go 1.17
 
