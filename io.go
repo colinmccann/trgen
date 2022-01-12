@@ -2,10 +2,10 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"strings"
 )
 
@@ -32,12 +32,12 @@ func handleInput(session *CTRDSession, target string, infile bool, infilePath st
 		check(err)
 
 		tr := CTRDTraceroute{
-			destinationIP:       ip,
-			destinationHostname: target,
-			originIP:            session.localIP,
-			hops:                make([]CTRDHop, session.maxHops),
+			DestinationIP:       ip,
+			DestinationHostname: target,
+			OriginIP:            session.LocalIP,
+			Hops:                make([]CTRDHop, session.MaxHops),
 		}
-		session.traceroutes = append(session.traceroutes, tr)
+		session.Traceroutes = append(session.Traceroutes, tr)
 	}
 }
 
@@ -56,6 +56,7 @@ func parseInfile(infile string) []string {
 		uri := scanner.Text()
 		// check for uri validity
 		// check for other things?
+		// TODO - can we use another func to do this instead?
 		if validateURI(uri) {
 			targets = append(targets, uri)
 		} else {
@@ -77,52 +78,43 @@ func handleOutput(session *CTRDSession, outfile bool, outfilePath string) {
 
 	// explicit check on outfile, given that the path has a default
 	if outfile {
-		session.outputType = "file"
-		session.outputPath = outfilePath
+		session.OutputType = "file"
+		session.OutputPath = outfilePath
 	} else {
-		session.outputType = "terminal"
+		session.OutputType = "terminal"
 	}
 }
 
+// at this point, this is analogous to writeToFile, but servers as a stub for the future
 func writeSessionToOutput(session *CTRDSession) {
-	fmt.Printf("Traceroute session complete.\n\n")
+	fmt.Printf("\nTraceroute session complete.\n\n")
 
-	// this currently is always true, but there will be future options such as websockets
-	if session.outputType == "file" {
-		f, err := os.Create(session.outputPath)
+	// this currently is always true
+	if session.OutputType == "file" {
+		f, err := os.Create(session.OutputPath)
 		check(err)
 		defer f.Close()
 
-		for _, tr := range session.traceroutes {
-			writeTracerouteHeadersToFile(f, tr)
-			for _, hop := range tr.hops {
-				writeHopToFile(f, hop)
-			}
-		}
+		writeTracerouteToFile(f, *session)
 	}
 }
 
-func writeTracerouteHeadersToFile(f *os.File, tr CTRDTraceroute) {
-	fmt.Printf("TR origin: %v", tr.originIP)
-	f.WriteString(fmt.Sprintf("%v\n", tr.originIP))
-	f.WriteString(tr.destinationHostname + "\n")
-	f.WriteString(fmt.Sprintf("%v\n", tr.destinationIP))
-	f.WriteString(strings.Repeat("-", 90) + "\n")
-	f.WriteString("Hop      IP      Hostname      Latency" + "\n")
+func writeTracerouteToFile(f *os.File, session CTRDSession) {
+	bs, err := json.Marshal(session)
+	if err != nil {
+		fmt.Println(err)
+	}
+	f.WriteString(string(bs))
 }
 
-func writeHopToFile(f *os.File, hop CTRDHop) {
-	f.WriteString(strconv.Itoa(hop.num) + "   " + hop.ip + "   " + hop.hostname + "   " + fmt.Sprintf("%v", hop.latency) + "\n")
-}
-
-func writeTracerouteHeadersToOutput(tr CTRDTraceroute) {
-	fmt.Printf("\nOrigin IP: %v\n", tr.originIP)
-	fmt.Printf("Destination hostname: %v\n", tr.destinationHostname)
-	fmt.Printf("Destination IP: %v\n", tr.destinationIP)
+func writeTracerouteHeadersToTerminal(tr CTRDTraceroute) {
+	fmt.Printf("\nOrigin IP: %v\n", tr.OriginIP)
+	fmt.Printf("Destination hostname: %v\n", tr.DestinationHostname)
+	fmt.Printf("Destination IP: %v\n", tr.DestinationIP)
 	fmt.Println(strings.Repeat("-", 90))
 	fmt.Printf("| %-3s | %-15s | %-50s | %-12s\n", "Hop", "IP", "Hostname", "Latency")
 }
 
-func writeHopToOutput(hop CTRDHop) {
-	fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.num, hop.ip, hop.hostname, hop.latency)
+func writeHopToTerminal(hop CTRDHop) {
+	fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.Ip, hop.Hostname, hop.Latency)
 }
