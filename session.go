@@ -13,6 +13,7 @@ import (
 
 func (session *CTRDSession) runSession() {
 	for _, tr := range session.Traceroutes {
+		writeTracerouteMetadataToTerminal(tr)
 		if session.OutputType == "terminal" {
 			writeTracerouteHeadersToTerminal(tr)
 		}
@@ -79,11 +80,7 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 				Ip:       "*",
 				Hostname: "*",
 			}
-			if session.OutputType == "terminal" {
-				writeHopToTerminal(tr.Hops[i-1])
-			}
-
-			// hop.ip, hop.hostname, hop.latency = "*", "*"
+			writeHopToOutput(session, tr.Hops[i-1])
 			continue
 		}
 
@@ -112,17 +109,15 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 			Latency:  latency,
 		}
 
-		if session.OutputType == "terminal" {
-			writeHopToTerminal(tr.Hops[i-1])
-		}
+		writeHopToOutput(session, tr.Hops[i-1])
 
 		// TODO - check this
 		if icmpAnswer.Type == ipv4.ICMPTypeEchoReply {
-			fmt.Println("Traceroute reached destination")
+			fmt.Println("\nTraceroute reached destination")
 			break
 		}
-
-		// TODO - remove zero values from the hops slice? The hops slice is maxHops long, with unassigned values at the end
-		// tr.hops = tr.hops(:)
 	}
+
+	// TODO - remove zero values from the hops slice? The hops slice is maxHops long, with unassigned values at the end
+	// tr.hops = tr.hops(:)
 }

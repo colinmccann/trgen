@@ -95,11 +95,11 @@ func writeSessionToOutput(session *CTRDSession) {
 		check(err)
 		defer f.Close()
 
-		writeTracerouteToFile(f, *session)
+		writeTracerouteToFile(f, session)
 	}
 }
 
-func writeTracerouteToFile(f *os.File, session CTRDSession) {
+func writeTracerouteToFile(f *os.File, session *CTRDSession) {
 	bs, err := json.Marshal(session)
 	if err != nil {
 		fmt.Println(err)
@@ -107,14 +107,21 @@ func writeTracerouteToFile(f *os.File, session CTRDSession) {
 	f.WriteString(string(bs))
 }
 
-func writeTracerouteHeadersToTerminal(tr CTRDTraceroute) {
-	fmt.Printf("\nOrigin IP: %v\n", tr.OriginIP)
-	fmt.Printf("Destination hostname: %v\n", tr.DestinationHostname)
+func writeTracerouteMetadataToTerminal(tr CTRDTraceroute) {
+	fmt.Println("\n\nRunning traceroute to " + tr.DestinationHostname + "...")
+	fmt.Printf("Origin IP: %v\n", tr.OriginIP)
 	fmt.Printf("Destination IP: %v\n", tr.DestinationIP)
+}
+
+func writeTracerouteHeadersToTerminal(tr CTRDTraceroute) {
 	fmt.Println(strings.Repeat("-", 90))
 	fmt.Printf("| %-3s | %-15s | %-50s | %-12s\n", "Hop", "IP", "Hostname", "Latency")
 }
 
-func writeHopToTerminal(hop CTRDHop) {
-	fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.Ip, hop.Hostname, hop.Latency)
+func writeHopToOutput(session *CTRDSession, hop CTRDHop) {
+	if session.OutputType == "terminal" {
+		fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.Ip, hop.Hostname, hop.Latency)
+	} else {
+		fmt.Printf(".")
+	}
 }

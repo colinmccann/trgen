@@ -23,6 +23,11 @@ func check(e error) {
 const URIPattern string = `^((ftp|http|https):\/\/)?(\S+(:\S*)?@)?((([1-9]\d?|1\d\d|2[01]\d|22[0-3])(\.(1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.([0-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(((([a-z\x{00a1}-\x{ffff}0-9]+-?-?_?)*[a-z\x{00a1}-\x{ffff}0-9]+)\.)?)?(([a-z\x{00a1}-\x{ffff}0-9]+-?-?_?)*[a-z\x{00a1}-\x{ffff}0-9]+)(?:\.([a-z\x{00a1}-\x{ffff}]{2,}))?)|localhost)(:(\d{1,5}))?((\/|\?|#)[^\s]*)?$`
 
 func validateURI(uri string) bool {
+	// r, _ := net.LookupIP(uri)
+	// if len(r) > 0 {
+	// 	return true
+	// }
+	// return false
 	pattern := URIPattern
 	match, err := regexp.MatchString(pattern, uri)
 	check(err)

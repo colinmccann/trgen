@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	defaultMaxHops = 12
+	defaultMaxHops = 64
 	defaultTimeout = 1 * time.Second // how long to wait for a response before going to next hop
 	defaultInfile  = "data/traceroute_targets.txt"
 	defaultOutfile = "data/results.txt"
@@ -66,6 +66,7 @@ func main() {
 		Timeout: *timeout,
 		LocalIP: localIP,
 	}
+
 	/*********************** I/O ****************************/
 	// TODO - this still feels weird, too global objecty. Is it not better to have a return here?
 	handleInput(&session, *trTarget, *infile, *infilePath)
