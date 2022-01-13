@@ -2,12 +2,11 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"regexp"
 	"strings"
 )
@@ -16,22 +15,30 @@ const ipLookupURL = "http://checkip.amazonaws.com"
 
 func check(e error) {
 	if e != nil {
-		log.Fatal(e)
+		// log.Fatal(e)
+		fmt.Println(e)
 	}
 }
 
 const URIPattern string = `^((ftp|http|https):\/\/)?(\S+(:\S*)?@)?((([1-9]\d?|1\d\d|2[01]\d|22[0-3])(\.(1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.([0-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(((([a-z\x{00a1}-\x{ffff}0-9]+-?-?_?)*[a-z\x{00a1}-\x{ffff}0-9]+)\.)?)?(([a-z\x{00a1}-\x{ffff}0-9]+-?-?_?)*[a-z\x{00a1}-\x{ffff}0-9]+)(?:\.([a-z\x{00a1}-\x{ffff}]{2,}))?)|localhost)(:(\d{1,5}))?((\/|\?|#)[^\s]*)?$`
 
+// weak validation of URIs
 func validateURI(uri string) bool {
-	// r, _ := net.LookupIP(uri)
-	// if len(r) > 0 {
-	// 	return true
-	// }
-	// return false
 	pattern := URIPattern
 	match, err := regexp.MatchString(pattern, uri)
 	check(err)
 	return match
+}
+
+// check for URI validity
+func validTarget(target string) bool {
+	// check for other things?
+	if validateURI(target) {
+		return true
+	} else {
+		fmt.Printf("Found non-valid traceroute target '%v', skipping...\n", target)
+		return false
+	}
 }
 
 // return user's local IP, as seen from external source (in this case, aws as defined in a const)
@@ -80,19 +87,12 @@ func IPLookup(target string) (net.IP, string, error) {
 
 	// TODO - handle this error properly
 	// fmt.Printf("Unable to resolve the given target: %v to an IP address.", target)
-	return ipAddr, ipStr, os.ErrNotExist
+	return ipAddr, ipStr, err
 }
 
 // return a net.IP ip address for a given hostname 'target'
 func lookupIPForHostname(target string) (net.IP, error) {
-	// removes the schema, port, etc
-	u, _ := url.Parse(target)
-	hostname := ""
-	if u.Hostname() != "" {
-		hostname = u.Hostname()
-	} else {
-		hostname = target
-	}
+	hostname := cleanedHostname(target)
 
 	ips, err := net.LookupIP(hostname)
 	if err != nil {
@@ -133,4 +133,14 @@ func lookupHostnameForIP(ip string) (string, error) {
 		}
 	}
 	return name, nil
+}
+
+func cleanedHostname(target string) string {
+	// removes the schema, port, etc
+	u, _ := url.Parse(target)
+	if u.Hostname() != "" {
+		return u.Hostname()
+	} else {
+		return target
+	}
 }

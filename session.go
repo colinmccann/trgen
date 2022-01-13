@@ -12,17 +12,23 @@ import (
 )
 
 func (session *CTRDSession) runSession() {
-	for _, tr := range session.Traceroutes {
+	for i, tr := range session.Traceroutes {
 		writeTracerouteMetadataToTerminal(tr)
 		if session.OutputType == "terminal" {
 			writeTracerouteHeadersToTerminal(tr)
 		}
-		trace(session, &tr)
+		trace(session, &session.Traceroutes[i])
 	}
 
+	// cleanup(session) - or addMetadata?
 	writeSessionToOutput(session)
 }
 
+/* TODO - something is up here, and I think it relates to a misunderstanding I have
+   Why can't I pass a reference to tr, why does it need to be &session.Traceroutes[i]?
+   - is the tr referenced somehow different from the tr in the session?
+   Why do I need to trwrite tr[i-1] = Hop{}
+*/
 func trace(session *CTRDSession, tr *CTRDTraceroute) {
 	// open up the listening address for returning ICMP packets
 	// if we're going to do multiple TRs concurrently, we'll have to open multiple of these, right?
@@ -52,13 +58,12 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 	for i := 1; i <= session.MaxHops; i++ {
 		// set the time to live
 		icmpConn.IPv4PacketConn().SetTTL(i)
-		// fmt.Printf("wb: %+v\n", string(wb))
 
 		// start the clock for the RTT
 		startTime := time.Now()
 
 		// setting this so that the WriteTo and ReadFrom timeout on failure
-		if err := icmpConn.SetDeadline(time.Now().Add(session.Timeout)); err != nil {
+		if err := icmpConn.SetDeadline(time.Now().Add(time.Duration(session.Timeout))); err != nil {
 			// TODO - clean up this error handling
 			fmt.Fprintf(os.Stderr, "Could not set the read timeout on the ipv4 socket: %s\n", err)
 			os.Exit(1)
@@ -77,11 +82,14 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 		// the ReadFrom never completes, n = 0, peer = nil
 		// this doesn't exactly work. Once it hits something non-responsive, it just continues forever until hitting max hops
 		if err != nil {
-			tr.Hops[i-1] = CTRDHop{
-				Num:      i,
-				Ip:       "*",
-				Hostname: "*",
-			}
+			// tr.Hops[i-1] = CTRDHop{
+			// 	Num:      i,
+			// 	Ip:       "*",
+			// 	Hostname: "*",
+			// }
+			tr.Hops[i-1].Num = i
+			tr.Hops[i-1].Ip = "*"
+			tr.Hops[i-1].Hostname = "*"
 			writeHopToOutput(session, tr.Hops[i-1])
 			continue
 		}
@@ -101,25 +109,44 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 		// finish line for the RTT
 		// TODO - is this the right place to put this?
 		latency := time.Since(startTime)
+		// latency := msDuration(time.Since(startTime))
 		// handle err
 		hostname, _ := lookupHostnameForIP(ip)
 
-		tr.Hops[i-1] = CTRDHop{
-			Num:      i,
-			Ip:       ip,
-			Hostname: hostname,
-			Latency:  latency,
-		}
+		// tr.Hops[i-1] = CTRDHop{
+		// 	Num:      i,
+		// 	Ip:       ip,
+		// 	Hostname: hostname,
+		// 	Latency:  latency,
+		// }
+		tr.Hops[i-1].Num = i
+		tr.Hops[i-1].Ip = ip
+		tr.Hops[i-1].Hostname = hostname
+		tr.Hops[i-1].Latency = msDuration(latency)
 
 		writeHopToOutput(session, tr.Hops[i-1])
 
 		// TODO - check this
+		// end of the line for this traceroute
 		if icmpAnswer.Type == ipv4.ICMPTypeEchoReply {
+			tr.Length = i
+			tr.Terminated = true
+			tr.Hops = tr.Hops[:i]
+
 			fmt.Println("\nTraceroute reached destination")
 			break
 		}
 	}
 
-	// TODO - remove zero values from the hops slice? The hops slice is maxHops long, with unassigned values at the end
-	// tr.hops = tr.hops(:)
 }
+
+// cleanup(*session CTRDSession) {
+// 	// remove zero values from TRs
+// 	for _, tr := range session.traceroutes {
+
+// 	}
+// 	// add tr metadata
+// 	// - length
+// 	// - terminated
+// 	// - ?
+// }

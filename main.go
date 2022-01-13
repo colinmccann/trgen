@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -16,11 +17,10 @@ const (
 )
 
 // should these structs be interfaces?
-// TODO - are these terms too generic? ctrdTraceroute, ctrdHop, etc - YES, fix this!
 // outputType should a be restricted set of options
 type CTRDSession struct {
 	MaxHops     int              `json:"maxHops"`
-	Timeout     time.Duration    `json:"timeOut"`
+	Timeout     msDuration       `json:"timeOut"`
 	OutputType  string           `json:"outputType"`
 	OutputPath  string           `json:"outputPath"`
 	LocalIP     net.IP           `json:"localIP"`
@@ -31,14 +31,16 @@ type CTRDTraceroute struct {
 	OriginIP            net.IP    `json:"originIP"`
 	DestinationIP       net.IP    `json:"destinationIP"`
 	DestinationHostname string    `json:"destinationHostname"`
+	Length              int       `json:"length"`
+	Terminated          bool      `json:"terminated"`
 	Hops                []CTRDHop `json:"hops"`
 }
 
 type CTRDHop struct {
-	Num      int           `json:"num"`
-	Ip       string        `json:"ip"`
-	Hostname string        `json:"hostname"`
-	Latency  time.Duration `json:"latency"`
+	Num      int        `json:"num"`
+	Ip       string     `json:"ip"`
+	Hostname string     `json:"hostname"`
+	Latency  msDuration `json:"latency"`
 }
 
 func main() {
@@ -63,14 +65,35 @@ func main() {
 	// - session time
 	session := CTRDSession{
 		MaxHops: *maxHops,
-		Timeout: *timeout,
+		Timeout: msDuration(*timeout),
 		LocalIP: localIP,
 	}
 
 	/*********************** I/O ****************************/
+	targets := handleInput(&session, *trTarget, *infile, *infilePath)
 	// TODO - this still feels weird, too global objecty. Is it not better to have a return here?
-	handleInput(&session, *trTarget, *infile, *infilePath)
 	handleOutput(&session, *outfile, *outfilePath)
+
+	/*********************** Setup TRs object for session ****************************/
+	for _, target := range targets {
+		if validTarget(target) {
+			ip, _, err := IPLookup(target)
+			check(err)
+
+			if err != nil {
+				fmt.Printf("Traceroute target %v not reachable, skipping...\n", target)
+				continue
+			}
+
+			tr := CTRDTraceroute{
+				DestinationIP:       ip,
+				DestinationHostname: cleanedHostname(target),
+				OriginIP:            session.LocalIP,
+				Hops:                make([]CTRDHop, session.MaxHops),
+			}
+			session.Traceroutes = append(session.Traceroutes, tr)
+		}
+	}
 
 	/****************** Main *******************/
 	session.runSession()

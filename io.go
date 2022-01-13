@@ -7,11 +7,12 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 )
 
 /*********************** Input ****************************/
 
-func handleInput(session *CTRDSession, target string, infile bool, infilePath string) {
+func handleInput(session *CTRDSession, target string, infile bool, infilePath string) []string {
 	var targets []string
 
 	// if the user entered a single target
@@ -27,18 +28,7 @@ func handleInput(session *CTRDSession, target string, infile bool, infilePath st
 		os.Exit(1)
 	}
 
-	for _, target := range targets {
-		ip, _, err := IPLookup(target)
-		check(err)
-
-		tr := CTRDTraceroute{
-			DestinationIP:       ip,
-			DestinationHostname: target,
-			OriginIP:            session.LocalIP,
-			Hops:                make([]CTRDHop, session.MaxHops),
-		}
-		session.Traceroutes = append(session.Traceroutes, tr)
-	}
+	return targets
 }
 
 func parseInfile(infile string) []string {
@@ -50,18 +40,9 @@ func parseInfile(infile string) []string {
 
 	// is it better to instantiate a zero length slice, or make it big and then clear out the empty values later? make([]string, 50)
 	targets := []string{}
-	// it might also be better to create the output struct (session struct) here, since we're going to have to do it anyways...
-	fmt.Println("Validating traceroute targets")
 	for scanner.Scan() {
 		uri := scanner.Text()
-		// check for uri validity
-		// check for other things?
-		// TODO - can we use another func to do this instead?
-		if validateURI(uri) {
-			targets = append(targets, uri)
-		} else {
-			fmt.Printf("Found non-valid traceroute target '%v', skipping...\n", uri)
-		}
+		targets = append(targets, uri)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -85,7 +66,7 @@ func handleOutput(session *CTRDSession, outfile bool, outfilePath string) {
 	}
 }
 
-// at this point, this is analogous to writeToFile, but servers as a stub for the future
+// at this point, this is analogous to writeToFile, but serves as a stub for the future
 func writeSessionToOutput(session *CTRDSession) {
 	fmt.Printf("\nTraceroute session complete.\n\n")
 
@@ -95,16 +76,26 @@ func writeSessionToOutput(session *CTRDSession) {
 		check(err)
 		defer f.Close()
 
-		writeTracerouteToFile(f, session)
+		writeSessionToFile(f, session)
 	}
 }
 
-func writeTracerouteToFile(f *os.File, session *CTRDSession) {
+func writeSessionToFile(f *os.File, session *CTRDSession) {
+	fmt.Printf("Session: %v\n", session)
 	bs, err := json.Marshal(session)
+	fmt.Printf("BS: %v\n", string(bs))
 	if err != nil {
 		fmt.Println(err)
 	}
 	f.WriteString(string(bs))
+}
+
+func writeTracerouteToTerminal(tr CTRDTraceroute) {
+	bs, err := json.Marshal(tr)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(bs))
 }
 
 func writeTracerouteMetadataToTerminal(tr CTRDTraceroute) {
@@ -124,4 +115,12 @@ func writeHopToOutput(session *CTRDSession, hop CTRDHop) {
 	} else {
 		fmt.Printf(".")
 	}
+}
+
+type msDuration time.Duration
+
+// implementing marshal for our duration
+func (d msDuration) MarshalJSON() (b []byte, err error) {
+	ms := float64(d) / float64(time.Millisecond)
+	return []byte(fmt.Sprintf(`"%v"`, ms)), nil
 }
