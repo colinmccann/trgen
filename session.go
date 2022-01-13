@@ -37,24 +37,31 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 	}
 	defer icmpConn.Close()
 
+	wm := icmp.Message{
+		Type: ipv4.ICMPTypeEcho, Code: 0,
+		Body: &icmp.Echo{
+			ID: os.Getpid() & 0xffff, Seq: 1,
+			Data: []byte("CTRD says hello!"),
+		},
+	}
+	wb, err := wm.Marshal(nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for i := 1; i <= session.MaxHops; i++ {
 		// set the time to live
 		icmpConn.IPv4PacketConn().SetTTL(i)
+		// fmt.Printf("wb: %+v\n", string(wb))
 
 		// start the clock for the RTT
 		startTime := time.Now()
 
-		wm := icmp.Message{
-			Type: ipv4.ICMPTypeEcho, Code: 0,
-			Body: &icmp.Echo{
-				ID: os.Getpid() & 0xffff, Seq: 1,
-				Data: []byte("CTRD says hello!"),
-			},
-		}
-
-		wb, err := wm.Marshal(nil)
-		if err != nil {
-			log.Fatal(err)
+		// setting this so that the WriteTo and ReadFrom timeout on failure
+		if err := icmpConn.SetDeadline(time.Now().Add(session.Timeout)); err != nil {
+			// TODO - clean up this error handling
+			fmt.Fprintf(os.Stderr, "Could not set the read timeout on the ipv4 socket: %s\n", err)
+			os.Exit(1)
 		}
 
 		// "62.141.54.25" - heisse.de
@@ -64,13 +71,8 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 
 		readBuffer := make([]byte, 1500)
 
-		if err := icmpConn.SetDeadline(time.Now().Add(session.Timeout)); err != nil {
-			// TODO - clean up this error handling
-			fmt.Fprintf(os.Stderr, "Could not set the read timeout on the ipv4 socket: %s\n", err)
-			os.Exit(1)
-		}
-
 		n, peer, err := icmpConn.ReadFrom(readBuffer)
+		// fmt.Printf("N: %v, Peer: %v", n, peer)
 		// this is where it's dying. Is it something with the wrong interface? Or ICMP is rejected?
 		// the ReadFrom never completes, n = 0, peer = nil
 		// this doesn't exactly work. Once it hits something non-responsive, it just continues forever until hitting max hops

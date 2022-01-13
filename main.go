@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	defaultMaxHops = 64
+	defaultMaxHops = 24
 	defaultTimeout = 1 * time.Second // how long to wait for a response before going to next hop
 	defaultInfile  = "data/traceroute_targets.txt"
 	defaultOutfile = "data/results.txt"
