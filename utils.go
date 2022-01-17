@@ -35,10 +35,10 @@ func validTarget(target string) bool {
 	// check for other things?
 	if validateURI(target) {
 		return true
-	} else {
-		fmt.Printf("Found non-valid traceroute target '%v', skipping...\n", target)
-		return false
 	}
+
+	fmt.Printf("Found non-valid traceroute target '%v', skipping...\n", target)
+	return false
 }
 
 // return user's local IP, as seen from external source (in this case, aws as defined in a const)
@@ -140,7 +140,7 @@ func cleanedHostname(target string) string {
 	u, _ := url.Parse(target)
 	if u.Hostname() != "" {
 		return u.Hostname()
-	} else {
-		return target
 	}
+
+	return target
 }

@@ -38,7 +38,7 @@ type CTRDTraceroute struct {
 
 type CTRDHop struct {
 	Num      int        `json:"num"`
-	Ip       string     `json:"ip"`
+	IP       string     `json:"ip"`
 	Hostname string     `json:"hostname"`
 	Latency  msDuration `json:"latency"`
 }

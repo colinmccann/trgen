@@ -12,6 +12,10 @@ import (
 
 /*********************** Input ****************************/
 
+// handleInput handles traceroute targets, depending on user input flags. Options are:
+// - single user inputted url
+// - input file
+// - external (web) source
 func handleInput(session *CTRDSession, target string, infile bool, infilePath string) []string {
 	var targets []string
 
@@ -31,6 +35,7 @@ func handleInput(session *CTRDSession, target string, infile bool, infilePath st
 	return targets
 }
 
+// parseInfile parses a file for traceroute targets
 func parseInfile(infile string) []string {
 	f, err := os.Open(infile)
 	check(err)
@@ -48,6 +53,7 @@ func parseInfile(infile string) []string {
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
+
 	return targets
 }
 
@@ -81,9 +87,7 @@ func writeSessionToOutput(session *CTRDSession) {
 }
 
 func writeSessionToFile(f *os.File, session *CTRDSession) {
-	fmt.Printf("Session: %v\n", session)
 	bs, err := json.Marshal(session)
-	fmt.Printf("BS: %v\n", string(bs))
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -111,7 +115,7 @@ func writeTracerouteHeadersToTerminal(tr CTRDTraceroute) {
 
 func writeHopToOutput(session *CTRDSession, hop CTRDHop) {
 	if session.OutputType == "terminal" {
-		fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.Ip, hop.Hostname, hop.Latency)
+		fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.IP, hop.Hostname, time.Duration(hop.Latency).String())
 	} else {
 		fmt.Printf(".")
 	}

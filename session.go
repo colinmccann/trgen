@@ -11,6 +11,7 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
+// runSession handles the everything btw in and out
 func (session *CTRDSession) runSession() {
 	for i, tr := range session.Traceroutes {
 		writeTracerouteMetadataToTerminal(tr)
@@ -88,7 +89,7 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 			// 	Hostname: "*",
 			// }
 			tr.Hops[i-1].Num = i
-			tr.Hops[i-1].Ip = "*"
+			tr.Hops[i-1].IP = "*"
 			tr.Hops[i-1].Hostname = "*"
 			writeHopToOutput(session, tr.Hops[i-1])
 			continue
