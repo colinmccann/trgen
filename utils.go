@@ -32,8 +32,7 @@ func validTarget(target string) bool {
 		return true
 	}
 
-	// logInfo(fmt.Sprintf("Found non-valid traceroute target '%v', skipping...", target))
-	fmt.Printf("Found non-valid traceroute target '%v', skipping...", target)
+	logInfo(fmt.Sprintf("Found non-valid traceroute target '%v', skipping...", target))
 	return false
 }
 

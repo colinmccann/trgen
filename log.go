@@ -5,6 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -39,21 +40,21 @@ type logMessage struct {
 var logChan = make(chan string, 64)
 var doneChan = make(chan struct{})
 
-func initLogging(logToFile bool, fileName string) {
+func initLogging(logToStdOut bool, defaultLogfileName string) {
 	log.SetFlags(0)
 
 	// TODO: once we shut down the channel properly, we should change this
 	// so that it doesnt opening the logfile for stdout logging
-	logFile, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
+	logFile, err := os.OpenFile(defaultLogfileName, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
-		fmt.Printf("Unable to open the log file %s, Error: %v\n", fileName, err)
+		fmt.Printf("Unable to open the log file %s, Error: %v\n", defaultLogfileName, err)
 		return
 	}
 
-	log.SetOutput(os.Stdout)
-	// if log to file
-	if logToFile {
-		log.SetOutput(logFile)
+	log.SetOutput(logFile)
+	if logToStdOut {
+		multi := io.MultiWriter(logFile, os.Stdout)
+		log.SetOutput(multi)
 	}
 
 	go runLogger(logFile)
@@ -62,11 +63,11 @@ func initLogging(logToFile bool, fileName string) {
 func runLogger(logFile *os.File) {
 	for {
 		select {
-		case s := <-logChan:
-			log.Println(s)
+		case l := <-logChan:
+			log.Println(l)
 		case <-doneChan:
-			// TODO - this never gets called, unless we include a sleep at the end of the program (when terminateLogging is called). Fix me
-			fmt.Println("Shutting down logger...")
+			// TODO - this rarely gets called, unless we include a sleep at the end of the program (when terminateLogging is called). Fix me
+			fmt.Println("\nShutting down logger...")
 			logFile.Close()
 			close(logChan)
 		}
@@ -85,6 +86,9 @@ func logMsg(prefix, msg string) {
 	logData.Message = msg
 	logJSON, _ := json.Marshal(logData)
 	logChan <- string(logJSON)
+
+	// print to terminal in addition to writing to logfile
+	fmt.Println(msg)
 }
 
 func logInfo(msg string) {

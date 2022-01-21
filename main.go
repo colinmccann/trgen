@@ -9,12 +9,11 @@ import (
 )
 
 const (
-	defaultMaxHops      = 24
-	defaultTimeout      = 1 * time.Second // how long to wait for a response before going to next hop
-	defaultInfile       = "data/traceroute_targets.txt"
-	defaultOutfile      = "data/results.txt"
-	defaultlogInfofile  = "log/info.log"
-	defaultlogErrorfile = "log/error.log"
+	defaultMaxHops = 24
+	defaultTimeout = 1 * time.Second // how long to wait for a response before going to next hop
+	defaultInfile  = "data/traceroute_targets.txt"
+	defaultOutfile = "data/results.txt"
+	defaultLogfile = "log/out.log"
 )
 
 // what other vals go in here?
@@ -75,8 +74,6 @@ func main() {
 	infilePath := flag.String("ipath", defaultInfile, "Specify path to traceroute targets input file")
 	outfile := flag.Bool("o", false, "Set to allow an output file")
 	outfilePath := flag.String("opath", defaultOutfile, "Specify path to results output file")
-	// do we really need a flag for this?
-	// logfilePath := flag.String("lpath", defaultLogfile, "Specify path to log file")
 	flag.Parse()
 
 	/*********************** Session ****************************/
@@ -96,7 +93,7 @@ func main() {
 		session.LogLevel = LogLevelDebug
 	}
 	// , defaultlogErrorfile
-	initLogging(*logToStdOut, defaultlogInfofile)
+	initLogging(*logToStdOut, defaultLogfile)
 
 	/*********************** I/O ****************************/
 	targets := handleInput(&session, *trTarget, *infile, *infilePath)
@@ -108,8 +105,7 @@ func main() {
 		if validTarget(target) {
 			ip, _, err := IPLookup(target)
 			if err != nil {
-				// logInfo(fmt.Sprintf("Traceroute target %v not reachable, skipping...\n", target))
-				fmt.Printf("Traceroute target %v not reachable, skipping...\n", target)
+				logInfo(fmt.Sprintf("Traceroute target %v not reachable, skipping...\n", target))
 				continue
 			}
 
@@ -124,13 +120,14 @@ func main() {
 	}
 
 	/****************** Main *******************/
+	logInfo(fmt.Sprintf("Starting session at %v", time.Now().UTC().Format("2006-01-02 15:04:05")))
 	session.runSession()
+	logInfo(fmt.Sprintf("Ending session at %v", time.Now().UTC().Format("2006-01-02 15:04:05")))
 
 	/*********************** Cleanup and exit ****************************/
 	session.EndedAt = time.Now().UTC()
-	writeSessionToOutput(&session)
-	// TEMP
-	fmt.Printf("Completed in %v", session.EndedAt.Sub(session.StartedAt))
+	printSessionToOutput(&session)
+	fmt.Printf("Completed in %+v", session.EndedAt.Sub(session.StartedAt))
 	terminateLogging()
 	os.Exit(0)
 }

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"time"
@@ -10,12 +9,11 @@ import (
 	"golang.org/x/net/ipv4"
 )
 
-// runSession handles the everything btw in and out
 func (session *CTRDSession) runSession() {
 	for i, tr := range session.Traceroutes {
-		writeTracerouteMetadataToTerminal(tr)
+		printTracerouteMetadataToTerminal(tr)
 		if session.OutputType == Terminal {
-			writeTracerouteHeadersToTerminal(tr)
+			printTracerouteHeadersToTerminal(tr)
 		}
 		trace(session, &session.Traceroutes[i])
 	}
@@ -69,14 +67,13 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 			os.Exit(1)
 		}
 
-		// "62.141.54.25" - heisse.de
-		// "142.1.217.155" - ixmaps.ca
-		// "140.82.114.3" - github.com
+		// send the msg off to the hop target
 		icmpConn.WriteTo(wb, &net.UDPAddr{IP: tr.DestinationIP, Zone: "en0"})
 
+		// read the response
 		readBuffer := make([]byte, 1500)
-
 		n, peer, err := icmpConn.ReadFrom(readBuffer)
+		// if the target doesn't respond
 		if err != nil {
 			// tr.Hops[i-1] = CTRDHop{
 			// 	Num:      i,
@@ -86,7 +83,7 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 			tr.Hops[i-1].Num = i
 			tr.Hops[i-1].IP = "*"
 			tr.Hops[i-1].Hostname = "*"
-			writeHopToOutput(session, tr.Hops[i-1])
+			printHopToOutput(session, tr.Hops[i-1])
 			continue
 		}
 
@@ -97,6 +94,7 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 			logError(err.Error())
 		}
 
+		// how did the hop respond? Used to decide if we're at the end of the set of hops
 		icmpAnswer, err := icmp.ParseMessage(1, readBuffer[:n])
 		if err != nil {
 			logError(err.Error())
@@ -105,45 +103,28 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 		// finish line for the RTT
 		// TODO - is this the right place to put this?
 		RTT := time.Since(startTime)
-		// latency := msDuration(time.Since(startTime))
 		// handle err
-		hostname, _ := lookupHostnameForIP(ip)
+		hostname, err := lookupHostnameForIP(ip)
+		if err != nil {
+			logError(err.Error())
+		}
 
-		// tr.Hops[i-1] = CTRDHop{
-		// 	Num:      i,
-		// 	Ip:       ip,
-		// 	Hostname: hostname,
-		// 	Latency:  latency,
-		// }
 		tr.Hops[i-1].Num = i
 		tr.Hops[i-1].IP = ip
 		tr.Hops[i-1].Hostname = hostname
 		tr.Hops[i-1].RTT = msDuration(RTT)
 
-		writeHopToOutput(session, tr.Hops[i-1])
+		printHopToOutput(session, tr.Hops[i-1])
 
-		// TODO - check this
 		// end of the line for this traceroute
 		if icmpAnswer.Type == ipv4.ICMPTypeEchoReply {
 			tr.Length = i
 			tr.Terminated = true
 			tr.Hops = tr.Hops[:i]
 
-			// logInfo("Traceroute reached destination")
-			fmt.Println("\nTraceroute reached destination")
+			logInfo("\nTraceroute reached destination")
 			break
 		}
 	}
 
 }
-
-// cleanup(*session CTRDSession) {
-// 	// remove zero values from TRs
-// 	for _, tr := range session.traceroutes {
-
-// 	}
-// 	// add tr metadata
-// 	// - length
-// 	// - terminated
-// 	// - ?
-// }

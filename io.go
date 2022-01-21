@@ -72,9 +72,8 @@ func handleOutput(session *CTRDSession, outfile bool, outfilePath string) {
 	}
 }
 
-// at this point, this is analogous to writeToFile, but serves as a stub for the future
-func writeSessionToOutput(session *CTRDSession) {
-	// logInfo("Traceroute session complete.")
+// at this point, this is analogous to printToFile, but serves as a stub for the future
+func printSessionToOutput(session *CTRDSession) {
 	fmt.Println("Traceroute session complete.")
 
 	// this currently is always true
@@ -85,11 +84,11 @@ func writeSessionToOutput(session *CTRDSession) {
 		}
 		defer f.Close()
 
-		writeSessionToFile(f, session)
+		printSessionToFile(f, session)
 	}
 }
 
-func writeSessionToFile(f *os.File, session *CTRDSession) {
+func printSessionToFile(f *os.File, session *CTRDSession) {
 	bs, err := json.Marshal(session)
 	if err != nil {
 		fmt.Println(err)
@@ -97,27 +96,26 @@ func writeSessionToFile(f *os.File, session *CTRDSession) {
 	f.WriteString(string(bs))
 }
 
-func writeTracerouteToTerminal(tr CTRDTraceroute) {
+func printTracerouteToTerminal(tr CTRDTraceroute) {
 	bs, err := json.Marshal(tr)
 	if err != nil {
 		fmt.Println(err)
 	}
 	fmt.Println(string(bs))
-
 }
 
-func writeTracerouteMetadataToTerminal(tr CTRDTraceroute) {
-	fmt.Println("\n\nRunning traceroute to '" + tr.DestinationHostname + "'")
-	fmt.Printf("Origin IP: %v\n", tr.OriginIP)
-	fmt.Printf("Destination IP: %v\n", tr.DestinationIP)
+func printTracerouteMetadataToTerminal(tr CTRDTraceroute) {
+	logInfo(fmt.Sprintf("Running traceroute to '" + tr.DestinationHostname + "'"))
+	logInfo(fmt.Sprintf("Origin IP: %v", tr.OriginIP))
+	logInfo(fmt.Sprintf("Destination IP: %v", tr.DestinationIP))
 }
 
-func writeTracerouteHeadersToTerminal(tr CTRDTraceroute) {
+func printTracerouteHeadersToTerminal(tr CTRDTraceroute) {
 	fmt.Println(strings.Repeat("-", 90))
 	fmt.Printf("| %-3s | %-15s | %-50s | %-12s\n", "Hop", "IP", "Hostname", "RTT")
 }
 
-func writeHopToOutput(session *CTRDSession, hop CTRDHop) {
+func printHopToOutput(session *CTRDSession, hop CTRDHop) {
 	if session.OutputType == Terminal {
 		fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.IP, hop.Hostname, time.Duration(hop.RTT).String())
 	} else {
