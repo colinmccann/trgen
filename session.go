@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"time"
@@ -15,14 +14,11 @@ import (
 func (session *CTRDSession) runSession() {
 	for i, tr := range session.Traceroutes {
 		writeTracerouteMetadataToTerminal(tr)
-		if session.OutputType == "terminal" {
+		if session.OutputType == Terminal {
 			writeTracerouteHeadersToTerminal(tr)
 		}
 		trace(session, &session.Traceroutes[i])
 	}
-
-	// cleanup(session) - or addMetadata?
-	writeSessionToOutput(session)
 }
 
 /* TODO - something is up here, and I think it relates to a misunderstanding I have
@@ -31,6 +27,10 @@ func (session *CTRDSession) runSession() {
    Why do I need to trwrite tr[i-1] = Hop{}
 */
 func trace(session *CTRDSession, tr *CTRDTraceroute) {
+	tr.StartedAt = time.Now().UTC()
+	defer func() {
+		tr.EndedAt = time.Now().UTC()
+	}()
 	// open up the listening address for returning ICMP packets
 	// if we're going to do multiple TRs concurrently, we'll have to open multiple of these, right?
 	icmpConn, err := icmp.ListenPacket("udp4", "0.0.0.0")
@@ -40,7 +40,7 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 	// defer ipv6_sock.Close()
 	// ipv6_sock.SetHopLimit(i)
 	if err != nil {
-		log.Fatal(err)
+		logError(err.Error())
 	}
 	defer icmpConn.Close()
 
@@ -53,7 +53,7 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 	}
 	wb, err := wm.Marshal(nil)
 	if err != nil {
-		log.Fatal(err)
+		logError(err.Error())
 	}
 
 	for i := 1; i <= session.MaxHops; i++ {
@@ -65,8 +65,7 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 
 		// setting this so that the WriteTo and ReadFrom timeout on failure
 		if err := icmpConn.SetDeadline(time.Now().Add(time.Duration(session.Timeout))); err != nil {
-			// TODO - clean up this error handling
-			fmt.Fprintf(os.Stderr, "Could not set the read timeout on the ipv4 socket: %s\n", err)
+			logError(err.Error())
 			os.Exit(1)
 		}
 
@@ -78,10 +77,6 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 		readBuffer := make([]byte, 1500)
 
 		n, peer, err := icmpConn.ReadFrom(readBuffer)
-		// fmt.Printf("N: %v, Peer: %v", n, peer)
-		// this is where it's dying. Is it something with the wrong interface? Or ICMP is rejected?
-		// the ReadFrom never completes, n = 0, peer = nil
-		// this doesn't exactly work. Once it hits something non-responsive, it just continues forever until hitting max hops
 		if err != nil {
 			// tr.Hops[i-1] = CTRDHop{
 			// 	Num:      i,
@@ -99,17 +94,17 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 		// ip is a string for now, set to something stricter when we clean up the IP - hostname / port DNS conversions
 		ip, _, err := net.SplitHostPort(peer.String())
 		if err != nil {
-			log.Fatal(err)
+			logError(err.Error())
 		}
 
 		icmpAnswer, err := icmp.ParseMessage(1, readBuffer[:n])
 		if err != nil {
-			log.Fatal(err)
+			logError(err.Error())
 		}
 
 		// finish line for the RTT
 		// TODO - is this the right place to put this?
-		latency := time.Since(startTime)
+		RTT := time.Since(startTime)
 		// latency := msDuration(time.Since(startTime))
 		// handle err
 		hostname, _ := lookupHostnameForIP(ip)
@@ -121,9 +116,9 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 		// 	Latency:  latency,
 		// }
 		tr.Hops[i-1].Num = i
-		tr.Hops[i-1].Ip = ip
+		tr.Hops[i-1].IP = ip
 		tr.Hops[i-1].Hostname = hostname
-		tr.Hops[i-1].Latency = msDuration(latency)
+		tr.Hops[i-1].RTT = msDuration(RTT)
 
 		writeHopToOutput(session, tr.Hops[i-1])
 
@@ -134,6 +129,7 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 			tr.Terminated = true
 			tr.Hops = tr.Hops[:i]
 
+			// logInfo("Traceroute reached destination")
 			fmt.Println("\nTraceroute reached destination")
 			break
 		}

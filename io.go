@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"strings"
 	"time"
@@ -28,7 +27,7 @@ func handleInput(session *CTRDSession, target string, infile bool, infilePath st
 	} else if infilePath != "" {
 		targets = parseInfile(infilePath)
 	} else {
-		log.Fatal("No input file or traceroute target specified")
+		logError("No input file or traceroute target specified")
 		os.Exit(1)
 	}
 
@@ -38,7 +37,9 @@ func handleInput(session *CTRDSession, target string, infile bool, infilePath st
 // parseInfile parses a file for traceroute targets
 func parseInfile(infile string) []string {
 	f, err := os.Open(infile)
-	check(err)
+	if err != nil {
+		logError(err.Error())
+	}
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
@@ -49,9 +50,8 @@ func parseInfile(infile string) []string {
 		uri := scanner.Text()
 		targets = append(targets, uri)
 	}
-
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+		logError(err.Error())
 	}
 
 	return targets
@@ -61,25 +61,28 @@ func parseInfile(infile string) []string {
 
 // these are mostly stubs for when we eventually write via eg a websocket
 func handleOutput(session *CTRDSession, outfile bool, outfilePath string) {
-	// handle output to websocket
+	// handle output to server/websocket
 
 	// explicit check on outfile, given that the path has a default
 	if outfile {
-		session.OutputType = "file"
+		session.OutputType = File
 		session.OutputPath = outfilePath
 	} else {
-		session.OutputType = "terminal"
+		session.OutputType = Terminal
 	}
 }
 
 // at this point, this is analogous to writeToFile, but serves as a stub for the future
 func writeSessionToOutput(session *CTRDSession) {
-	fmt.Printf("\nTraceroute session complete.\n\n")
+	// logInfo("Traceroute session complete.")
+	fmt.Println("Traceroute session complete.")
 
 	// this currently is always true
-	if session.OutputType == "file" {
+	if session.OutputType == File {
 		f, err := os.Create(session.OutputPath)
-		check(err)
+		if err != nil {
+			logError(err.Error())
+		}
 		defer f.Close()
 
 		writeSessionToFile(f, session)
@@ -100,22 +103,23 @@ func writeTracerouteToTerminal(tr CTRDTraceroute) {
 		fmt.Println(err)
 	}
 	fmt.Println(string(bs))
+
 }
 
 func writeTracerouteMetadataToTerminal(tr CTRDTraceroute) {
-	fmt.Println("\n\nRunning traceroute to " + tr.DestinationHostname + "...")
+	fmt.Println("\n\nRunning traceroute to '" + tr.DestinationHostname + "'")
 	fmt.Printf("Origin IP: %v\n", tr.OriginIP)
 	fmt.Printf("Destination IP: %v\n", tr.DestinationIP)
 }
 
 func writeTracerouteHeadersToTerminal(tr CTRDTraceroute) {
 	fmt.Println(strings.Repeat("-", 90))
-	fmt.Printf("| %-3s | %-15s | %-50s | %-12s\n", "Hop", "IP", "Hostname", "Latency")
+	fmt.Printf("| %-3s | %-15s | %-50s | %-12s\n", "Hop", "IP", "Hostname", "RTT")
 }
 
 func writeHopToOutput(session *CTRDSession, hop CTRDHop) {
-	if session.OutputType == "terminal" {
-		fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.IP, hop.Hostname, time.Duration(hop.Latency).String())
+	if session.OutputType == Terminal {
+		fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.IP, hop.Hostname, time.Duration(hop.RTT).String())
 	} else {
 		fmt.Printf(".")
 	}

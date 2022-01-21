@@ -3,52 +3,71 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"time"
 )
 
 const (
-	defaultMaxHops = 24
-	defaultTimeout = 1 * time.Second // how long to wait for a response before going to next hop
-	defaultInfile  = "data/traceroute_targets.txt"
-	defaultOutfile = "data/results.txt"
+	defaultMaxHops      = 24
+	defaultTimeout      = 1 * time.Second // how long to wait for a response before going to next hop
+	defaultInfile       = "data/traceroute_targets.txt"
+	defaultOutfile      = "data/results.txt"
+	defaultlogInfofile  = "log/info.log"
+	defaultlogErrorfile = "log/error.log"
 )
 
-// should these structs be interfaces?
-// outputType should a be restricted set of options
+// what other vals go in here?
+// - submitterName
+// - submitterIp
+// - submitterPostCode
 type CTRDSession struct {
 	MaxHops     int              `json:"maxHops"`
 	Timeout     msDuration       `json:"timeOut"`
-	OutputType  string           `json:"outputType"`
+	OutputType  OutputType       `json:"outputType"`
 	OutputPath  string           `json:"outputPath"`
 	LocalIP     net.IP           `json:"localIP"`
+	LogLevel    LogLevel         `json:"logLevel"`
+	StartedAt   time.Time        `json:"startedAt"`
+	EndedAt     time.Time        `json:"endedAt"`
 	Traceroutes []CTRDTraceroute `json:"traceroutes"`
 }
 
+// what other vals go in here?
 type CTRDTraceroute struct {
 	OriginIP            net.IP    `json:"originIP"`
 	DestinationIP       net.IP    `json:"destinationIP"`
 	DestinationHostname string    `json:"destinationHostname"`
 	Length              int       `json:"length"`
 	Terminated          bool      `json:"terminated"`
+	StartedAt           time.Time `json:"startedAt"`
+	EndedAt             time.Time `json:"endedAt"`
 	Hops                []CTRDHop `json:"hops"`
 }
 
+// what other vals go in here?
+// - AttemptNum - or does an attempt have it's own struct? Probably...
+// - RTT is better than latency?
+// - minRTT
 type CTRDHop struct {
 	Num      int        `json:"num"`
 	IP       string     `json:"ip"`
 	Hostname string     `json:"hostname"`
-	Latency  msDuration `json:"latency"`
+	RTT      msDuration `json:"RTT"`
 }
 
-func main() {
-	/*********************** Misc / config ****************************/
-	// TODO - create an init/setup func, put this in
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
+type OutputType int
 
+const (
+	Terminal OutputType = iota
+	File
+	Server
+)
+
+func main() {
 	/*********************** Flags ****************************/
+	debug := flag.Bool("debug", false, "")
+	logToStdOut := flag.Bool("stdout", false, "Set to log to standard out")
 	maxHops := flag.Int("m", defaultMaxHops, "Max hops in the traceroute (ie max ttl)")
 	timeout := flag.Duration("t", defaultTimeout, "Timeout to wait for an answer in one hop")
 	trTarget := flag.String("u", "", "Traceroute target (url or ip)")
@@ -56,18 +75,28 @@ func main() {
 	infilePath := flag.String("ipath", defaultInfile, "Specify path to traceroute targets input file")
 	outfile := flag.Bool("o", false, "Set to allow an output file")
 	outfilePath := flag.String("opath", defaultOutfile, "Specify path to results output file")
+	// do we really need a flag for this?
+	// logfilePath := flag.String("lpath", defaultLogfile, "Specify path to log file")
 	flag.Parse()
 
 	/*********************** Session ****************************/
 
 	localIP, _ := getLocalIP()
-	// what other vals go in here?
-	// - session time
+
 	session := CTRDSession{
-		MaxHops: *maxHops,
-		Timeout: msDuration(*timeout),
-		LocalIP: localIP,
+		MaxHops:   *maxHops,
+		Timeout:   msDuration(*timeout),
+		LocalIP:   localIP,
+		LogLevel:  LogLevelInfo,
+		StartedAt: time.Now().UTC(),
 	}
+
+	/*********************** Log setup ****************************/
+	if *debug {
+		session.LogLevel = LogLevelDebug
+	}
+	// , defaultlogErrorfile
+	initLogging(*logToStdOut, defaultlogInfofile)
 
 	/*********************** I/O ****************************/
 	targets := handleInput(&session, *trTarget, *infile, *infilePath)
@@ -78,9 +107,8 @@ func main() {
 	for _, target := range targets {
 		if validTarget(target) {
 			ip, _, err := IPLookup(target)
-			check(err)
-
 			if err != nil {
+				// logInfo(fmt.Sprintf("Traceroute target %v not reachable, skipping...\n", target))
 				fmt.Printf("Traceroute target %v not reachable, skipping...\n", target)
 				continue
 			}
@@ -99,5 +127,10 @@ func main() {
 	session.runSession()
 
 	/*********************** Cleanup and exit ****************************/
+	session.EndedAt = time.Now().UTC()
+	writeSessionToOutput(&session)
+	// TEMP
+	fmt.Printf("Completed in %v", session.EndedAt.Sub(session.StartedAt))
+	terminateLogging()
 	os.Exit(0)
 }

@@ -13,20 +13,15 @@ import (
 
 const ipLookupURL = "http://checkip.amazonaws.com"
 
-func check(e error) {
-	if e != nil {
-		// log.Fatal(e)
-		fmt.Println(e)
-	}
-}
-
 const URIPattern string = `^((ftp|http|https):\/\/)?(\S+(:\S*)?@)?((([1-9]\d?|1\d\d|2[01]\d|22[0-3])(\.(1?\d{1,2}|2[0-4]\d|25[0-5])){2}(?:\.([0-9]\d?|1\d\d|2[0-4]\d|25[0-4]))|(((([a-z\x{00a1}-\x{ffff}0-9]+-?-?_?)*[a-z\x{00a1}-\x{ffff}0-9]+)\.)?)?(([a-z\x{00a1}-\x{ffff}0-9]+-?-?_?)*[a-z\x{00a1}-\x{ffff}0-9]+)(?:\.([a-z\x{00a1}-\x{ffff}]{2,}))?)|localhost)(:(\d{1,5}))?((\/|\?|#)[^\s]*)?$`
 
 // weak validation of URIs
 func validateURI(uri string) bool {
 	pattern := URIPattern
 	match, err := regexp.MatchString(pattern, uri)
-	check(err)
+	if err != nil {
+		logError(err.Error())
+	}
 	return match
 }
 
@@ -37,7 +32,8 @@ func validTarget(target string) bool {
 		return true
 	}
 
-	fmt.Printf("Found non-valid traceroute target '%v', skipping...\n", target)
+	// logInfo(fmt.Sprintf("Found non-valid traceroute target '%v', skipping...", target))
+	fmt.Printf("Found non-valid traceroute target '%v', skipping...", target)
 	return false
 }
 
@@ -85,8 +81,6 @@ func IPLookup(target string) (net.IP, string, error) {
 		return ipAddr, target, nil
 	}
 
-	// TODO - handle this error properly
-	// fmt.Printf("Unable to resolve the given target: %v to an IP address.", target)
 	return ipAddr, ipStr, err
 }
 
