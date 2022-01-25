@@ -21,15 +21,16 @@ const (
 // - submitterIp
 // - submitterPostCode
 type CTRDSession struct {
-	MaxHops     int              `json:"maxHops"`
-	Timeout     msDuration       `json:"timeOut"`
-	OutputType  OutputType       `json:"outputType"`
-	OutputPath  string           `json:"outputPath"`
-	LocalIP     net.IP           `json:"localIP"`
-	LogLevel    LogLevel         `json:"logLevel"`
-	StartedAt   time.Time        `json:"startedAt"`
-	EndedAt     time.Time        `json:"endedAt"`
-	Traceroutes []CTRDTraceroute `json:"traceroutes"`
+	MaxHops         int              `json:"maxHops"`
+	Timeout         msDuration       `json:"timeOut"`
+	OutputType      OutputType       `json:"outputType"`
+	OutputPath      string           `json:"outputPath"`
+	LocalIP         net.IP           `json:"localIP"`
+	LogLevel        LogLevel         `json:"logLevel"`
+	StartedAt       time.Time        `json:"startedAt"`
+	EndedAt         time.Time        `json:"endedAt"`
+	ValidatorOutput bool             `json:"validatorOutput"`
+	Traceroutes     []CTRDTraceroute `json:"traceroutes"`
 }
 
 // what other vals go in here?
@@ -74,6 +75,7 @@ func main() {
 	infilePath := flag.String("ipath", defaultInfile, "Specify path to traceroute targets input file")
 	outfile := flag.Bool("o", false, "Set to allow an output file")
 	outfilePath := flag.String("opath", defaultOutfile, "Specify path to results output file")
+	validatorOutput := flag.Bool("b", false, "Validator output only includes IP - used for trgen validation. Diff ")
 	flag.Parse()
 
 	/*********************** Session ****************************/
@@ -81,18 +83,18 @@ func main() {
 	localIP, _ := getLocalIP()
 
 	session := CTRDSession{
-		MaxHops:   *maxHops,
-		Timeout:   msDuration(*timeout),
-		LocalIP:   localIP,
-		LogLevel:  LogLevelInfo,
-		StartedAt: time.Now().UTC(),
+		MaxHops:         *maxHops,
+		Timeout:         msDuration(*timeout),
+		LocalIP:         localIP,
+		LogLevel:        LogLevelInfo,
+		StartedAt:       time.Now().UTC(),
+		ValidatorOutput: *validatorOutput,
 	}
 
 	/*********************** Log setup ****************************/
 	if *debug {
 		session.LogLevel = LogLevelDebug
 	}
-	// , defaultlogErrorfile
 	initLogging(*logToStdOut, defaultLogfile)
 
 	/*********************** I/O ****************************/

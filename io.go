@@ -9,6 +9,10 @@ import (
 	"time"
 )
 
+// this is populated with the -b flag. To be used in comparison with the trgen_validator.sh
+// to confirm that this trgen creates the same TR outputs as an OS level traceroute
+const validatorOutputFile = "data/validator_trgen_output.txt"
+
 /*********************** Input ****************************/
 
 // handleInput handles traceroute targets, depending on user input flags. Options are:
@@ -86,6 +90,11 @@ func printSessionToOutput(session *CTRDSession) {
 
 		printSessionToFile(f, session)
 	}
+
+	// validate whether these TRs follow the same path as the OS would generate
+	if session.ValidatorOutput {
+		printSessionToValidatorOutput(session)
+	}
 }
 
 func printSessionToFile(f *os.File, session *CTRDSession) {
@@ -120,6 +129,27 @@ func printHopToOutput(session *CTRDSession, hop CTRDHop) {
 		fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.IP, hop.Hostname, time.Duration(hop.RTT).String())
 	} else {
 		fmt.Printf(".")
+	}
+}
+
+func printSessionToValidatorOutput(session *CTRDSession) {
+	f, err := os.Create(validatorOutputFile)
+	if err != nil {
+		logError(err.Error())
+	}
+	defer f.Close()
+
+	for _, tr := range session.Traceroutes {
+		f.WriteString(tr.DestinationHostname)
+		for _, h := range tr.Hops {
+			if h.IP == "*" {
+				f.WriteString("\n")
+			} else {
+				f.WriteString("\n" + h.IP)
+			}
+
+		}
+		f.WriteString("\n" + strings.Repeat("-", 20) + "\n\n")
 	}
 }
 
