@@ -56,31 +56,44 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 
 	for i := 1; i <= session.MaxHops; i++ {
 		// set the time to live
+		tr.Hops[i-1].Num = i
 		icmpConn.IPv4PacketConn().SetTTL(i)
 
-		// start the clock for the RTT
-		startTime := time.Now()
-
-		// setting this so that the WriteTo and ReadFrom timeout on failure
+		// setting a deadline so that the WriteTo and ReadFrom timeout on failure
 		if err := icmpConn.SetDeadline(time.Now().Add(time.Duration(session.Timeout))); err != nil {
 			logError(err.Error())
+			// TODO - is os.Exit this really justified here?
 			os.Exit(1)
 		}
 
-		// send the msg off to the hop target
-		icmpConn.WriteTo(wb, &net.UDPAddr{IP: tr.DestinationIP, Zone: "en0"})
-
-		// read the response
+		var (
+			RTTs          []msDuration
+			peer          net.Addr
+			n             int
+			readFromError error
+		)
 		readBuffer := make([]byte, 1500)
-		n, peer, err := icmpConn.ReadFrom(readBuffer)
+		// this can also be done in go routines? try it, see what would happen
+		for j := 1; j <= session.NumAttempts; j++ {
+			// start the clock for the RTT
+			startTime := time.Now()
+
+			// send the msg off to the hop target
+			icmpConn.WriteTo(wb, &net.UDPAddr{IP: tr.DestinationIP, Zone: "en0"})
+
+			// read the response
+			n, peer, readFromError = icmpConn.ReadFrom(readBuffer)
+			if readFromError != nil {
+				// RTTs = append(RTTs, "*")
+				continue
+			}
+
+			// finish line for the RTT
+			RTTs = append(RTTs, msDuration(time.Since(startTime)))
+		}
+
 		// if the target doesn't respond
-		if err != nil {
-			// tr.Hops[i-1] = CTRDHop{
-			// 	Num:      i,
-			// 	Ip:       "*",
-			// 	Hostname: "*",
-			// }
-			tr.Hops[i-1].Num = i
+		if readFromError != nil {
 			tr.Hops[i-1].IP = "*"
 			tr.Hops[i-1].Hostname = "*"
 			printHopToOutput(session, tr.Hops[i-1])
@@ -93,30 +106,22 @@ func trace(session *CTRDSession, tr *CTRDTraceroute) {
 		if err != nil {
 			logError(err.Error())
 		}
-
-		// how did the hop respond? Used to decide if we're at the end of the set of hops
-		icmpAnswer, err := icmp.ParseMessage(1, readBuffer[:n])
-		if err != nil {
-			logError(err.Error())
-		}
-
-		// finish line for the RTT
-		// TODO - is this the right place to put this?
-		RTT := time.Since(startTime)
-		// handle err
 		hostname, err := lookupHostnameForIP(ip)
 		if err != nil {
 			logError(err.Error())
 		}
 
-		tr.Hops[i-1].Num = i
 		tr.Hops[i-1].IP = ip
 		tr.Hops[i-1].Hostname = hostname
-		tr.Hops[i-1].RTT = msDuration(RTT)
+		tr.Hops[i-1].RTTs = RTTs
 
 		printHopToOutput(session, tr.Hops[i-1])
 
-		// end of the line for this traceroute
+		// how did the hop respond? This is used to decide if we're at the end of the set of hops
+		icmpAnswer, err := icmp.ParseMessage(1, readBuffer[:n])
+		if err != nil {
+			logError(err.Error())
+		}
 		if icmpAnswer.Type == ipv4.ICMPTypeEchoReply {
 			tr.Length = i
 			tr.Terminated = true

@@ -9,23 +9,21 @@ import (
 )
 
 const (
-	defaultMaxHops = 24
-	defaultTimeout = 1 * time.Second // how long to wait for a response before going to next hop
-	defaultInfile  = "data/traceroute_targets.txt"
-	defaultOutfile = "data/results.txt"
-	defaultLogfile = "log/out.log"
+	defaultMaxHops     = 24
+	defaultTimeout     = 1 * time.Second // how long to wait for a response before going to next hop
+	defaultNumAttempts = 1
+	defaultInfile      = "data/traceroute_targets.txt"
+	defaultOutfile     = "data/results.txt"
+	defaultLogfile     = "log/out.log"
 )
 
-// what other vals go in here?
-// - submitterName
-// - submitterIp
-// - submitterPostCode
 type CTRDSession struct {
+	Submitter       CTRDSubmitter    `json:"submitter"`
 	MaxHops         int              `json:"maxHops"`
 	Timeout         msDuration       `json:"timeOut"`
+	NumAttempts     int              `json:"numAttempts"`
 	OutputType      OutputType       `json:"outputType"`
 	OutputPath      string           `json:"outputPath"`
-	LocalIP         net.IP           `json:"localIP"`
 	LogLevel        LogLevel         `json:"logLevel"`
 	StartedAt       time.Time        `json:"startedAt"`
 	EndedAt         time.Time        `json:"endedAt"`
@@ -33,7 +31,16 @@ type CTRDSession struct {
 	Traceroutes     []CTRDTraceroute `json:"traceroutes"`
 }
 
-// what other vals go in here?
+// other values
+// - ISP or ASN
+type CTRDSubmitter struct {
+	Name     string `json:"name"`
+	PostCode string `json:"postCode"`
+	IP       net.IP `json:"IP"`
+}
+
+// other values
+//
 type CTRDTraceroute struct {
 	OriginIP            net.IP    `json:"originIP"`
 	DestinationIP       net.IP    `json:"destinationIP"`
@@ -46,14 +53,13 @@ type CTRDTraceroute struct {
 }
 
 // what other vals go in here?
-// - AttemptNum - or does an attempt have it's own struct? Probably...
-// - RTT is better than latency?
+// - attempt struct? RIPE uses it, Scamper doesn't
 // - minRTT
 type CTRDHop struct {
-	Num      int        `json:"num"`
-	IP       string     `json:"ip"`
-	Hostname string     `json:"hostname"`
-	RTT      msDuration `json:"RTT"`
+	Num      int          `json:"num"`
+	IP       string       `json:"ip"`
+	Hostname string       `json:"hostname"`
+	RTTs     []msDuration `json:"RTTs"`
 }
 
 type OutputType int
@@ -69,6 +75,7 @@ func main() {
 	debug := flag.Bool("debug", false, "")
 	logToStdOut := flag.Bool("stdout", false, "Set to log to standard out")
 	maxHops := flag.Int("m", defaultMaxHops, "Max hops in the traceroute (ie max ttl)")
+	// these should be adjusted to match trOS / scamper flags whenever possible
 	timeout := flag.Duration("t", defaultTimeout, "Timeout to wait for an answer in one hop")
 	trTarget := flag.String("u", "", "Traceroute target (url or ip)")
 	infile := flag.Bool("i", false, "Set to allow an input file")
@@ -76,16 +83,28 @@ func main() {
 	outfile := flag.Bool("o", false, "Set to allow an output file")
 	outfilePath := flag.String("opath", defaultOutfile, "Specify path to results output file")
 	validatorOutput := flag.Bool("b", false, "Validator output only includes IP - used for trgen validation. Diff ")
+
+	numAttempts := flag.Int("q", defaultNumAttempts, "Number of attempts at each hop probe")
+
+	submitterName := flag.String("sname", "", "Submitter name")
+	submitterPostCode := flag.String("spostcode", "", "Submitter postal code")
+
 	flag.Parse()
 
 	/*********************** Session ****************************/
 
 	localIP, _ := getLocalIP()
+	submitter := CTRDSubmitter{
+		Name:     *submitterName,
+		IP:       localIP,
+		PostCode: *submitterPostCode,
+	}
 
 	session := CTRDSession{
+		Submitter:       submitter,
 		MaxHops:         *maxHops,
 		Timeout:         msDuration(*timeout),
-		LocalIP:         localIP,
+		NumAttempts:     *numAttempts,
 		LogLevel:        LogLevelInfo,
 		StartedAt:       time.Now().UTC(),
 		ValidatorOutput: *validatorOutput,
@@ -114,7 +133,7 @@ func main() {
 			tr := CTRDTraceroute{
 				DestinationIP:       ip,
 				DestinationHostname: cleanedHostname(target),
-				OriginIP:            session.LocalIP,
+				OriginIP:            submitter.IP,
 				Hops:                make([]CTRDHop, session.MaxHops),
 			}
 			session.Traceroutes = append(session.Traceroutes, tr)

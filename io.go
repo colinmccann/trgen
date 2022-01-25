@@ -121,12 +121,17 @@ func printTracerouteMetadataToTerminal(tr CTRDTraceroute) {
 
 func printTracerouteHeadersToTerminal(tr CTRDTraceroute) {
 	fmt.Println(strings.Repeat("-", 90))
-	fmt.Printf("| %-3s | %-15s | %-50s | %-12s\n", "Hop", "IP", "Hostname", "RTT")
+	fmt.Printf("| %-3s | %-15s | %-50s | %-12s\n", "Hop", "IP", "Hostname", "RTTs")
 }
 
 func printHopToOutput(session *CTRDSession, hop CTRDHop) {
 	if session.OutputType == Terminal {
-		fmt.Printf("| %-3d | %-15s | %-50s | %-12s\n", hop.Num, hop.IP, hop.Hostname, time.Duration(hop.RTT).String())
+		rttStr := ""
+		for _, r := range hop.RTTs {
+			rttStr += time.Duration(r).String() + " "
+		}
+
+		fmt.Printf("| %-3d | %-15s | %-50s | %-12v\n", hop.Num, hop.IP, hop.Hostname, rttStr)
 	} else {
 		fmt.Printf(".")
 	}
